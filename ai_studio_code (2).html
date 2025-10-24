@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gmail Name Generator</title>
+
+    <!--
+    README: Gmail Name Generator
+
+    This is a single, self-contained HTML file that requires no server or build process.
+
+    HOW TO USE:
+    1.  Input a list of Gmail addresses (or just usernames) into the "Gmail Addresses" textarea. They can be one per line or comma-separated.
+    2.  The tool uses three name lists: "Male First Names," "Female First Names," and "Surnames."
+        - You can use the pre-loaded example lists by clicking "Load Example Lists."
+        - You can type or paste your own names into these textareas (one name per line).
+        - Your custom lists can be saved in your browser's storage using "Save to localStorage" and reloaded later.
+    3.  Adjust the "Generation Options" as needed:
+        - **Deterministic (Default):** The same email address and name lists will always produce the same name. This is useful for consistent mapping.
+        - **Randomize:** Generates random names. You can provide a "seed" for reproducible random results.
+        - **Force Gender:** You can force all generated names to be male or female.
+    4.  Click the "GENERATE NAMES" button.
+    5.  The results will appear in the table on the right. You can sort, filter, copy, or download the results using the controls provided.
+
+    HOW DETERMINISTIC MAPPING WORKS:
+    The tool converts each email address into a numeric "hash." This number is then used to predictably pick a gender, a first name from the corresponding list, and a surname. This ensures that 'user@gmail.com' will always get the same name if the name lists haven't changed. To prevent two different emails from getting the same full name, the tool detects these "collisions" and applies a tie-breaking rule to find a new, unique name for the second email.
+    -->
+
+    <style>
+        :root {
+            --primary-color: #4285F4;
+            --primary-dark: #3367D6;
+            --background-color: #f5f5f5;
+            --surface-color: #ffffff;
+            --text-color: #333333;
+            --border-color: #dddddd;
+            --header-height: 60px;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            height: 100%;
+        }
+        
+        body {
+            height: 100%;
+            font-family: var(--font-family);
+            background-color: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* Prevent body from scrolling */
+        }
+
+        header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 0 2rem;
+            height: var(--header-height);
+            display: flex;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 10;
+            flex-shrink: 0; /* Prevent header from shrinking */
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 500;
+        }
+
+        main {
+            flex-grow: 1;
+            padding: 1.5rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr 2fr;
+            gap: 1.5rem;
+            overflow: hidden; /* Prevent main container from scrolling */
+            /* The max-height ensures the grid fits within the viewport */
+            max-height: calc(100vh - var(--header-height));
+        }
+
+        .card {
+            background: var(--surface-color);
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* Each card manages its own overflow */
+        }
+
+        /* --- SCROLL FIX: Allow content within cards to scroll if it overflows --- */
+        .card > section {
+            overflow-y: auto;
+            flex-grow: 1;
+            /* Add some padding to prevent scrollbar from touching content */
+            padding-right: 10px;
+            margin-right: -10px;
+        }
+
+        .card h2 {
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        textarea, input[type="text"], input[type="search"], select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 0.95rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        textarea:focus, input:focus, select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
+        }
+
+        textarea {
+            resize: vertical;
+        }
+        
+        #gmail-input-textarea {
+            min-height: 150px;
+        }
+        
+        .name-list-container .form-group {
+             display: flex;
+             flex-direction: column;
+             flex-grow: 1; /* Allow form group to grow */
+             min-height: 150px;
+        }
+
+        .name-list-container textarea {
+            flex-grow: 1; /* Allow textarea to fill the space */
+        }
+
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        button, .button-link {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.25rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 600;
+            transition: background-color 0.2s, transform 0.1s;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        button:hover, .button-link:hover {
+            background-color: var(--primary-dark);
+        }
+
+        button:active, .button-link:active {
+            transform: translateY(1px);
+        }
+        
+        button.secondary {
+            background-color: #6c757d;
+        }
+        button.secondary:hover {
+            background-color: #5a6268;
+        }
+
+        .generate-btn {
+            background-color: #34A853;
+            width: 100%;
+            font-size: 1.1rem;
+            padding: 0.8rem;
+            margin-top: 1rem;
+        }
+        .generate-btn:hover {
+            background-color: #2c8b46;
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        input[type="checkbox"] {
+           width: 1.25em;
+           height: 1.25em;
+        }
+
+        #progress-container {
+            width: 100%;
+            background-color: var(--border-color);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 1rem;
+            height: 10px;
+            display: none;
+        }
+        
+        #progress-bar {
+            width: 0%;
+            height: 100%;
+            background-color: var(--primary-color);
+            transition: width 0.1s linear;
+        }
+
+        #stats-container {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+        #stats-container span {
+            margin: 0 0.5rem;
+            font-weight: 600;
+        }
+
+        .output-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .output-controls .form-group {
+            margin-bottom: 0;
+            flex-grow: 1;
+        }
+
+        /* --- SCROLL FIX: Key change for results table --- */
+        .results-table-wrapper {
+            overflow-y: auto; /* Enable vertical scrolling */
+            overflow-x: auto; /* Keep horizontal scrolling for small screens */
+            flex-grow: 1; /* Ensure it takes available space */
+        }
+
+        #results-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        #results-table thead {
+            position: sticky;
+            top: 0;
+            background: var(--surface-color);
+            z-index: 5;
+        }
+        #results-table th, #results-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        #results-table th {
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+        }
+        #results-table th:hover {
+            background-color: var(--background-color);
+        }
+        #results-table th .sort-indicator {
+            display: inline-block;
+            margin-left: 5px;
+            opacity: 0.5;
+        }
+
+
+        /* Responsive Layout */
+        @media (max-width: 1200px) {
+            main {
+                grid-template-columns: 1fr 1fr;
+            }
+            .column-3 {
+                grid-column: 1 / 3;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                overflow: auto; /* Allow body scroll on mobile for simplicity */
+            }
+            main {
+                grid-template-columns: 1fr;
+                padding: 1rem;
+                gap: 1rem;
+                overflow: visible; /* Let main content flow */
+                max-height: none; /* Disable height constraint on mobile */
+            }
+            .card > section {
+                overflow-y: visible; /* Disable internal scrolling for cards on mobile */
+            }
+            .results-table-wrapper {
+                overflow-y: visible;
+                max-height: 50vh; /* Give a max-height so it doesn't take the whole page */
+                overflow: auto; /* Re-enable scroll for just the table */
+            }
+            header {
+                padding: 0 1rem;
+            }
+            header h1 {
+                font-size: 1.2rem;
+            }
+            .card {
+                padding: 1rem;
+            }
+        }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Gmail Name Generator</h1>
+    </header>
+
+    <main>
+        <div class="card column-1">
+            <section aria-labelledby="inputs-heading">
+                <h2 id="inputs-heading">1. Inputs & Options</h2>
+                <div class="form-group">
+                    <label for="gmail-input-textarea">Gmail Addresses</label>
+                    <textarea id="gmail-input-textarea" placeholder="john.doe@gmail.com&#10;jane.doe&#10;user123, user456@yahoo.com"></textarea>
+                </div>
+                <button onclick="app.loadSampleEmails()" class="secondary">Load Sample Emails</button>
+                
+                <div class="form-group" style="margin-top: 1.5rem;">
+                    <label>Generation Options</label>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="randomize-checkbox">
+                        <label for="randomize-checkbox">Randomize instead of deterministic</label>
+                    </div>
+                     <div class="checkbox-group">
+                        <input type="checkbox" id="ignore-duplicates-checkbox" checked>
+                        <label for="ignore-duplicates-checkbox">Ignore duplicate emails</label>
+                    </div>
+                    <div class="options-grid">
+                        <div>
+                            <label for="random-seed-input">Random Seed</label>
+                            <input type="text" id="random-seed-input" placeholder="Optional">
+                        </div>
+                        <div>
+                            <label for="gender-force-select">Force Gender</label>
+                            <select id="gender-force-select">
+                                <option value="hash">Mixed (from hash)</option>
+                                <option value="male">Male</option>
+                                <option value="female">Female</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 1.5rem;">
+                     <label>Optional: OpenAI Integration</label>
+                     <div class="checkbox-group">
+                         <input type="checkbox" id="openai-toggle" disabled>
+                         <label for="openai-toggle">Use OpenAI for creative names (Feature disabled)</label>
+                    </div>
+                    <input type="text" id="openai-key-input" placeholder="Enter OpenAI API Key" disabled>
+                 </div>
+
+                <button id="generate-btn" class="generate-btn">GENERATE NAMES</button>
+                <div id="progress-container">
+                    <div id="progress-bar"></div>
+                </div>
+                <div id="stats-container"></div>
+            </section>
+        </div>
+
+        <div class="card column-2 name-list-container">
+            <section aria-labelledby="name-lists-heading">
+                <h2 id="name-lists-heading">2. Name Lists</h2>
+                <div class="form-group">
+                    <label for="male-names-textarea">Male First Names</label>
+                    <textarea id="male-names-textarea"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="female-names-textarea">Female First Names</label>
+                    <textarea id="female-names-textarea"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="surnames-textarea">Surnames</label>
+                    <textarea id="surnames-textarea"></textarea>
+                </div>
+                <div class="button-group">
+                    <button id="load-examples-btn">Load Example Lists</button>
+                    <button id="clear-lists-btn" class="secondary">Clear Lists</button>
+                </div>
+                 <div class="button-group">
+                    <button id="save-storage-btn">Save to localStorage</button>
+                    <button id="load-storage-btn">Load from localStorage</button>
+                </div>
+            </section>
+        </div>
+
+        <div class="card column-3">
+            <section aria-labelledby="output-heading">
+                <h2 id="output-heading">3. Output</h2>
+                <div class="output-controls">
+                    <div class="form-group">
+                        <label for="filter-input">Filter Results</label>
+                        <input type="search" id="filter-input" placeholder="Search table...">
+                    </div>
+                    <div class="button-group">
+                        <button id="copy-btn">Copy CSV</button>
+                        <a id="download-txt-btn" class="button-link" href="#" download="generated_names.txt">Download .txt</a>
+                        <a id="download-csv-btn" class="button-link" href="#" download="generated_names.csv">Download .csv</a>
+                    </div>
+                </div>
+                <div class="results-table-wrapper">
+                    <table id="results-table">
+                        <thead>
+                            <tr>
+                                <th data-column="index"># <span class="sort-indicator"></span></th>
+                                <th data-column="email">Email <span class="sort-indicator"></span></th>
+                                <th data-column="firstName">First Name <span class="sort-indicator"></span></th>
+                                <th data-column="lastName">Last Name <span class="sort-indicator"></span></th>
+                                <th data-column="gender">Gender <span class="sort-indicator"></span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-tbody">
+                            <!-- Results will be injected here -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </main>
+
+<script>
+const app = (function() {
+    'use strict';
+
+    // --- EMBEDDED NAME DATABASE ---
+    const DB = {
+        // 1000 USA Female Names
+        femaleFirstNames: ["Olivia","Emma","Amelia","Charlotte","Mia","Sophia","Isabella","Evelyn","Ava","Sofia","Camila","Harper","Luna","Eleanor","Violet","Aurora","Elizabeth","Eliana","Hazel","Chloe","Ellie","Nora","Gianna","Lily","Emily","Aria","Scarlett","Penelope","Zoe","Ella","Avery","Abigail","Mila","Lucy","Isla","Ivy","Layla","Lainey","Nova","Grace","Willow","Riley","Emilia","Naomi","Elena","Madison","Valentina","Victoria","Stella","Delilah","Maya","Hannah","Leah","Lillian","Genesis","Josephine","Sadie","Adeline","Zoey","Sophie","Paisley","Alice","Ruby","Eloise","Madelyn","Leilani","Claire","Addison","Ayla","Emery","Iris","Eden","Natalie","Maria","Maeve","Daisy","Vivian","Clara","Autumn","Liliana","Everly","Audrey","Lyla","Jade","Kinsley","Millie","Madeline","Josie","Kennedy","Athena","Melody","Caroline","Aaliyah","Anna","Sarah","Quinn","Lydia","Lucia","Allison","Hailey","Ailany","Cora","Ariana","Parker","Natalia","Gabriella","Savannah","Brooklyn","Bella","Georgia","Juniper","Alaia","Raelynn","Hadley","Rose","Julia","Serenity","Eliza","Margaret","Eva","Amara","Melanie","Cecilia","Ashley","Rylee","Margot","Samantha","Catalina","Juliette","Aubrey","Esther","Mary","Nevaeh","Skylar","Alina","Amira","Ember","Magnolia","Sienna","Charlie","Elliana","Summer","Alana","Brielle","Remi","Sage","Valerie","Hallie","Wrenley","Kehlani","Emerson","June","Sloane","Emersyn","Elsie","Oaklynn","Oakley","Blakely","Freya","Piper","Valeria","Arya","Adalynn","Everleigh","Genevieve","Anastasia","Isabel","Peyton","Amaya","Isabelle","Olive","Ruth","Ximena","Evangeline","Katherine","Callie","Rosalie","Alani","Lilah","Kaia","Brianna","Bailey","Phoebe","Vivienne","Andrea","Myla","Lia","Sara","Kylie","Reese","Annie","Daphne","Ada","Adaline","Arianna","Ariella","Sutton","Celeste","Jasmine","Mackenzie","Haven","Scottie","Gemma","Ana","Tatum","Arabella","Lila","Molly","Stevie","Blake","Aitana","Alaina","Wren","River","Noelle","Delaney","Journee","Blair","Adalyn","Kaylee","Alexandra","Mabel","Norah","Presley","Alora","Vera","Celine","Amy","Brynlee","Nyla","Saylor","Khloe","Antonella","Zara","Aliyah","Cataleya","Lennon","Kiara","Camille","Dahlia","Kaylani","Mariana","Diana","Reagan","Selena","Kimberly","Rachel","Gracie","Faith","Juliana","Miriam","Elise","Noa","Elaina","Maisie","Lilith","Collins","Palmer","Lilly","Shiloh","Ophelia","Elianna","Lena","Harmony","Aspen","Rowan","Gia","Leila","Jane","Talia","Adelaide","Dakota","Lola","Lucille","Kailani","Morgan","Zuri","Milani","Daniela","Selah","Alessia","Angela","Juliet","Evie","Amora","Rory","Marley","Sydney","Alanna","Leia","Luciana","Kamila","Harlow","Kali","Octavia","Amari","Sawyer","Gabriela","Ariel","Maggie","Rosemary","Ryleigh","Tessa","Evelynn","Londyn","Danna","Amina","Brooke","Samara","Kendall","Rosie","Alayna","Angelina","Francesca","Adelyn","Fatima","Hope","Nicole","Nayeli","Catherine","Nina","Journey","Adriana","Camilla","Ailani","Malia","Meadow","Jordyn","Joanna","Emory","Malani","Serena","Teagan","Aurelia","Vanessa","Kayla","Navy","Poppy","Kalani","Regina","Adelina","Rebecca","Ariyah","Esme","Heidi","Aisha","Julieta","Thea","Annabelle","Esmeralda","Lauren","Julianna","Taylor","Wrenlee","London","Giselle","Sabrina","Azalea","Laura","Sylvie","Sylvia","Alaya","Raya","Elora","Finley","Mya","Dream","Viviana","Elaine","Elodie","Laila","Sunny","Briella","Lana","Paige","Itzel","Mckenna","Melissa","Frances","Mira","Payton","Hattie","Astrid","Brynn","Winter","Aylin","Miley","Raven","Jocelyn","Maryam","Logan","Veronica","Gwendolyn","Anya","Leighton","Alivia","Harley","Charlee","Alyssa","Colette","Hayden","Lorelai","Jayla","Ivory","Anaya","Fiona","Trinity","Aubree","Michelle","Matilda","Lilliana","Mallory","Mariah","Helena","Wynter","Carmen","Alayah","Liana","Holly","Madilyn","Phoenix","Raelyn","Willa","Helen","Emely","Alessandra","Gracelynn","Carolina","Arleth","Salem","Dorothy","Xiomara","Elisa","Reign","Florence","Alicia","Madeleine","Melany","Kataleya","Zariah","Bonnie","Joy","Kaliyah","Haisley","Sarai","Blaire","Elowyn","Saige","Adelynn","Opal","Demi","Nylah","Emmy","Camryn","Kira","Lorelei","Daleyza","Raegan","Maia","Bianca","Aniyah","Annalise","Alexandria","Amirah","Alison","Anahi","Gracelyn","Brooklynn","Miracle","Everlee","Adhara","Alma","Macie","Murphy","Romina","Cassidy","Clementine","Heaven","Elle","Skye","Destiny","Lyra","Rylie","Paris","Cameron","Felicity","Maddison","Leona","Scarlet","Kora","Mariam","Meredith","Mckenzie","Dayana","Cali","Amanda","Arielle","Angel","Calliope","Fernanda","Estella","April","Izabella","Hanna","Marceline","Alexis","Carter","Daniella","Marlee","Virginia","Kataleya","Halo","Nadia","Amiyah","Madelynn","Emerie","Renata","Oaklee","Remington","Maxine","Nellie","Briar","Danielle","Charli","Makenna","Imani","Armani","Edith","Nalani","Mae","Vienna","Hadassah","Stephanie","Ari","Kate","Jimena","Briana","Faye","Jordan","Louise","Amber","Makayla","Zahra","Lylah","Margo","Amoura","Jennifer","Kyla","Mylah","Winnie","Alisson","Amalia","Reina","Avianna","Allie","Ivanna","Ariya","Lilian","Alia","Aylani","Noah","Reyna","Lexi","Brinley","Iyla","Mavis","Lina","Cecelia","Eve","Maren","Monroe","Capri","Emelia","Jessica","Halle","Alejandra","Gabrielle","Yara","Beatrice","Della","Kamryn","Katie","Ariah","Arlette","Noemi","Alondra","Maliyah","Mara","Jacqueline","Jazlyn","Frankie","Angie","Eileen","Lyric","Aliana","Sierra","Rosalia","Oaklyn","Chaya","Amaia","Leyla","Holland","Cleo","Jream","Leslie","Sevyn","Jolene","Mina","Keira","Legacy","Tiana","Elliott","Cassandra","Jaylani","Priscilla","Rhea","Kinley","Clover","Estrella","Zariyah","Journi","Miranda","Angelica","Marlowe","Jovie","Abby","Sariyah","Kenzie","Oakleigh","Aya","Siena","Emberly","Melina","Amani","Bristol","Estelle","Galilea","Irene","Marie","Marina","Makenzie","Sasha","Paislee","Isabela","Goldie","Myra","Davina","Flora","Anne","Azariah","Indie","Kaitlyn","Jazmin","Gloria","Georgina","Shelby","Dallas","Thalia","Aliza","Averie","Skyler","Macy","Rosa","Dulce","Khaleesi","Marilyn","Martha","Adley","Belen","Ellianna","Kelsey","Nia","Chana","Lakelynn","Selene","Lottie","Loretta","Aleena","Ila","Dani","Remy","Whitley","Jenna","Lillie","Kennedi","Violeta","Kendra","Lennox","Laney","Aviana","Solana","Veda","Marigold","Billie","Drew","Dylan","Ellis","Gwen","Amayah","Milan","Leilany","Ryan","Bridget","Christina","Ezra","Ainsley","Emerald","Hana","Noor","Rivka","Amelie","Jenesis","Royalty","Lenora","Taytum","Jamie","Kathryn","Aileen","Arlet","Coraline","Kiana","Kyra","Araceli","Azaria","Kenna","Monica","Bethany","Laurel","Charley","Karla","Kayleigh","Rayna","Louisa","Celia","Emmie","Fallon","Persephone","Winona","Marisol","Lara","Kensley","Mckinley","Michaela","Novalee","Elyse","Lacey","Penny","Zelda","Alena","Luz","Keilani","Nala","Paula","Birdie","Karsyn","Lakelyn","Miller","Jemma","Aleah","Inaya","Megan","Sloan","Charleigh","Rosalina","Andi","Nola","Julie","Adrianna","Kaeli","Addilyn","Freyja","Ramona","Samira","Karina","Denver","Janelle","Mikayla","Seraphina","Haley","Indy","Paulina","Rowyn","Milana","Chelsea","Elina","Milena","Valery","Ivey","Maci","Stormi","Brittany","Madilynn","Aila","Yareli","Yaretzi","Zaylee","Erin","Adele","Robin","Jaliyah","Maisy","Pearl","Adalee","Brynleigh","Keyla","Alexa","Baylor","Jessie","Cielo","Braelynn","Alianna","Theodora","Malaya","Meilani","Tallulah","Analia","Nyomi","Promise","Sol","Xyla","Kylee","Marjorie","Treasure","Soleil","Zaria","Cynthia","Luella","Sky","Ayleen","Neriah","Iliana","Judith","Ocean","Lea","Linda","Livia","Maddie","Magdalena","Elia","Kahlani","Micah","Tiffany","Wrenleigh","Zaniyah","Kallie","Love","Andie","Johanna","Mercy","Skyla","Aliya","Deborah","Zainab","Anais","Greta","Kaiya","Malaysia","Marianna","Amaris","Barbara","Bellamy","Dalia","Anika","Giana","Keziah","Nataly","Cheyenne","Kelly","Luisa","Salma","Teresa","Aura","Carly","Liv","Azari","Dafne","Rebekah","Amiri","Berkley","Emberlynn","Hunter","Jaycee","Alexia","Reya","Ruthie","Eleonora","Janiyah","Rosalyn","Giuliana","Emiliana","Novah","Tru","Kori","Aspyn","Chandler","Kailany","Lilyana","Elowen","Khalani","Naya","Zyla","Jolie","Leanna","Yamileth","Cattleya","Elisabeth","Ensley","Ashlyn","Allyson","August","Kimber","Marleigh","Soraya","Anaiah","Analeia","Waverly","Yasmin","Zora","Joelle","Lilia","Nancy","Icelynn","Indigo","Arely","Laylani","Romy","Scout","Ayra","Giovanna","Siya","Katelyn","Madalyn","Natasha","Alaiya","Honey","Lettie","Sarahi","Elsa","Emmeline","Hadlee","Lilianna","Zendaya","Ainhoa","Elliot","Jazmine","Aadhya","Guinevere","Rayne","Clare","Saanvi","Campbell","Salome","Tilly","Yusra","Akira","Henley","Lyanna","Quincy","Rosalee","Vada","Ainara","Annika","Ayah","Violette","Aleia","Kaya","Mazie","Amyra","Celina","Mikaela","Paloma","Elouise","Etta","Julietta","Kamiyah","Zoya","Jayleen","Kassidy","Keily","Harlee","Kiera","Liberty","Darcy","Dior","Lisa","Malka","Arisbeth","Kara","Bailee","Elani","Harmoni","Mariella","Zayla","Emi","Jianna","Maelynn","Avani"],
+        // 1000 USA Male Names
+        maleFirstNames: ["Liam","Noah","Oliver","Theodore","James","Henry","Mateo","Elijah","Lucas","William","Benjamin","Levi","Ezra","Sebastian","Jack","Daniel","Samuel","Michael","Ethan","Asher","John","Hudson","Luca","Leo","Elias","Owen","Alexander","Dylan","Santiago","Julian","David","Joseph","Matthew","Luke","Jackson","Maverick","Miles","Wyatt","Thomas","Isaac","Jacob","Mason","Gabriel","Anthony","Carter","Logan","Aiden","Grayson","Caleb","Cooper","Charles","Roman","Josiah","Ezekiel","Thiago","Isaiah","Joshua","Wesley","Jayden","Bennett","Christopher","Nathan","Angel","Nolan","Waylon","Cameron","Brooks","Andrew","Beau","Weston","Rowan","Adrian","Lincoln","Enzo","Ian","Kai","Christian","Axel","Aaron","Theo","Silas","Walker","Jonathan","Leonardo","Everett","Micah","Ryan","August","Gael","Robert","Jose","Eli","Jeremiah","Luka","Amir","Jaxon","Parker","Colton","Myles","Adam","Atlas","Xavier","Easton","Jordan","Arthur","Landon","Austin","Dominic","Adriel","Damian","Vincent","River","Emiliano","Jace","Archer","Lorenzo","Jameson","Nicholas","Emmett","Milo","Harrison","Giovanni","Carson","George","Kayden","Jonah","Greyson","Hunter","Graham","Luis","Declan","Sawyer","Jasper","Ryder","Carlos","Connor","Juan","Matteo","Dawson","Calvin","Leon","Dean","Evan","Nathaniel","Diego","Arlo","Bryson","Jason","Malachi","Elliot","Zion","Emilio","Ivan","Hayden","Stetson","Jude","Legend","Matias","Callum","Hayes","Jett","Cole","Elliott","Jesus","Ace","Beckett","Alan","Beckham","Jayce","Braxton","Jaxson","Amari","Chase","Rhett","Max","Charlie","Felix","Kingston","Judah","Antonio","Emmanuel","Maxwell","Ryker","Alejandro","Nicolas","Barrett","Jesse","Ashton","Miguel","Brayden","Tyler","Peter","Camden","Zachary","Tatum","Kevin","Andres","Finn","Justin","Tucker","Bentley","Zayden","Messiah","Abraham","Alex","Adonis","Kaiden","Timothy","Knox","Tate","Caden","Ayden","Nico","Victor","Maddox","Xander","Oscar","Colter","Joel","Abel","Patrick","Rafael","Griffin","Brody","Jaziel","Rory","Eithan","Edward","Riley","Brandon","Milan","Richard","Malakai","Ismael","Kyrie","Louis","Elian","Kairo","Cohen","Nash","Grant","Callan","Dallas","Harvey","Muhammad","Mark","Javier","Karter","Zayn","Crew","Eric","Simon","Aziel","Cyrus","Gavin","Marcus","Ronan","Derek","Avery","Omar","Lane","Warren","Lennox","Paul","Blake","Jeremy","Tristan","Lukas","Steven","Emerson","Walter","Cade","Ellis","Otto","Phoenix","Colt","Atticus","Kaleb","Israel","Tobias","Holden","Saint","Romeo","Kenneth","Jorge","Angelo","Remington","Paxton","Cody","Finley","Kayson","Koa","Kash","Josue","Ares","Hendrix","Bryce","Maximiliano","Zyaire","Reid","Brian","Bodhi","Cruz","Kaden","Bryan","Zane","Francisco","Martin","Brady","Casey","Shepherd","Aidan","Baker","Malcolm","Jax","Cash","Clayton","Kohen","Leonel","Cristian","Bowen","Dante","Ali","Jaylen","Orion","Briggs","Jensen","Dakota","Preston","Maximus","Gideon","Erick","Archie","Colin","Sonny","Shiloh","Mathias","Ezequiel","Sullivan","Joaquin","Wade","King","Niko","Damien","Kade","Bodie","Dariel","Luciano","Cayden","Andre","Manuel","Fernando","Colson","Rhys","Cairo","Anderson","Kyler","Onyx","Ibrahim","Cesar","Travis","Santino","Callahan","Bradley","Baylor","Banks","Russell","Desmond","Killian","Grady","Rylan","Sterling","Kylo","Eduardo","Ricardo","Wells","Stephen","Zander","Raymond","Hector","Eliam","Edwin","Titus","Iker","Franklin","Kamari","Marco","Spencer","Julius","Khalil","Marshall","Wilder","Jared","Jaden","Kashton","Jay","Karson","Mario","Ari","Remy","Pedro","Sergio","Hugo","Prince","Winston","Pablo","Forrest","Augustus","Kobe","Oakley","Daxton","Tadeo","Sage","Apollo","Lawson","Kian","Solomon","Chance","Kayce","Raphael","Reed","Jake","Frederick","Armani","Hank","Nehemiah","Royal","Kameron","Malik","Alijah","Kane","Dalton","Lewis","Noel","Benson","Sean","Clark","Miller","Kyle","Kieran","Sutton","Fabian","Tanner","Marcelo","Rowen","Isaias","Zayne","Nasir","Raiden","Francis","Bo","Valentino","Rome","Damon","Reece","Esteban","Edgar","Johnny","Kylian","Tyson","Uriel","Royce","Cillian","Koda","Kyson","Eden","Jalen","Frank","Conrad","Jasiah","Matthias","Zaire","Corbin","Asa","Yusuf","Erik","Callen","Kendrick","Odin","Brantley","Rodrigo","Marcos","Gianni","Alexis","Lucian","Denver","Sylas","Andy","Collin","Hezekiah","Moshe","Finnegan","Ronin","Atreus","Adan","Emanuel","Quinn","Mack","Leandro","Rocco","Ruben","Ledger","Azariah","Donovan","Moses","Kaizen","Elio","Leonidas","Lawrence","Tripp","Ariel","Alonzo","Kaison","Lian","Devin","Rio","Johnathan","Ayaan","Gunner","Jeffrey","Philip","Samson","Moises","Lucca","Musa","Camilo","Hamza","Ridge","Kolton","Morgan","Troy","Kylan","Amiri","Boone","Makai","Johan","Bruce","Dorian","Gregory","Pierce","Roy","Drew","Clay","Caiden","Enrique","Jamir","Leland","Mohamed","Alessandro","Deacon","Augustine","Dominick","Roberto","Kasen","Zain","Jonas","Emir","Seth","Saul","Jamari","Lionel","Garrett","Jaiden","Fletcher","Scott","Armando","Cassius","Kason","Zachariah","Ford","Soren","Zaiden","Allen","Louie","Ronald","Alden","Arturo","Caspian","Rayan","Major","Arjun","Colby","Eliel","Krew","Ander","Kenzo","Maximilian","Memphis","Nikolai","Samir","Ocean","Anakin","Gerardo","Keegan","Maximo","Mohammed","Kaysen","Julio","Mohammad","Gunnar","Shane","Ozzy","Zakai","Sincere","Jaime","Albert","Azriel","Izaiah","Jaxton","Raul","Yosef","Creed","Rhodes","Princeton","Porter","Cassian","Omari","Tru","Chosen","Reese","Jayceon","Jayson","Jamie","Reign","Trevor","Phillip","Boston","Kamden","Crue","Eliseo","Colsen","Keanu","Mauricio","Salem","Dario","Dax","Jase","Shawn","Vicente","Gustavo","Danny","Mylo","Kyro","Wilson","Davis","Jakari","Jakai","Truett","Hassan","Chris","Sam","Brixton","Kyaire","Uriah","Azael","Westley","Rocky","Peyton","Sevyn","Dilan","Drake","Zaid","Roland","Dereck","Braylen","Harlan","Taylor","Riggs","Ahmad","Cal","Marvin","Donald","Leonard","Nathanael","Aarav","Abdiel","Kareem","Corey","Emmitt","Wylder","Kohen","Junior","Zyair","Zayd","Dustin","Wayne","Ahmed","Madden","Quincy","Bellamy","Lachlan","Layton","Amias","Chaim","Layne","Mac","Amos","Briar","Carmelo","Aries","Bruno","Houston","Julien","Trace","Brock","Yahya","Conor","Dennis","Duke","Abram","Jefferson","Vincenzo","Izan","Lee","Finnley","Brayan","Raylan","Enoch","Avyaan","Dexter","Salvador","Case","Misael","Forest","Nikolas","Westin","Braylon","Clyde","Ryland","Otis","Tommy","Zeke","Yehuda","Tomas","Azrael","Dutton","Flynn","Chandler","Idris","Zamir","Ambrose","Franco","Huxley","Wes","Chozen","Darius","Valentin","Alberto","Magnus","Roger","Benicio","Brycen","Marcel","Ryatt","Zahir","Keith","Rayden","Jamison","Teo","Skyler","Blaze","Cayson","Hugh","Yahir","Cannon","Yousef","Bjorn","Noe","Alonso","Alvaro","Evander","Kenai","Aurelio","Jahmir","Lochlan","Aron","Harry","Nelson","Ray","Alfredo","Abdullah","Aryan","Conner","Lennon","Bridger","Westyn","Jasiel","Quentin","Trey","Yael","Alvin","Casen","Dakari","Rex","Damir","Waylen","Izael","Jeremias","Kaiser","Kolson","Ben","Kyree","Tony","Bode","Jesiah","Eiden","Jaxxon","Jedidiah","Remi","Robin","Santana","Kyren","Landen","Ezrah","Murphy","Castiel","Boden","Derrick","Karim","Mustafa","Rey","Rudy","Emery","Ignacio","Jettson","Bear","Edison","Ricky","Ramon","Anders","Gage","Guillermo","Santos","Kolter","Quinton","Axton","Abner","Alfred","Darwin","Rohan","Lance","Avi","Keaton","Orlando","Everest","Jagger","Elisha","Heath","Jones","Thaddeus","Allan","Cason","Douglas","Issac","Kenji","Matheo","Ty","Asaiah","Jimmy","Arian","Ozias","Leroy","Neil","Watson","Agustin","Bryer","Jerry","Dillon","Eren","Eugene","Ayan","Melvin","Nixon","Reuben","Stanley","Grey","Loyal","Alec","Casper","Dane","Azaiah","Byron","Joe","Emory","Zaylen","Massimo","Trenton","Gatlin","Joey","Benny","Jon","Jrue","Gian","Seven","Colten","Ernesto","Fisher","Teddy","Kaisen","Zechariah","Darian","Salvatore","Jericho","Mitchell","Alistair","Calum","Van","Zev","Langston","Mccoy","Ulises","Lucien","Benedict","Carlo","Coleson","Meir","Henrik","Jiraiya","Kellan","Alfonso","Azai","Campbell","Kylen","Felipe","Leif","Rowdy","Curtis","Ameer","Kiaan","Maurice","Krue","Shimon","Zyon","Damari","Jairo","Khalid","Kabir","Jireh","Mathew","Shepard","Eddie","Isael","Arden","Cedric","Nazir","Alessio","Khai","Marcellus","Wesson","Yisroel","Zymir","Landyn","Darren","Legacy","Devon","Judson","Vihaan","Yitzchok","Zen","Dangelo","Adler","Aspen","Brodie","Kase","Khaza","Mordechai","Dash","Makari","Neo","Zavier","Evren","Imran","Laith","Cain","Ira","Osiris","Shlomo","Yaakov","Ephraim","Shmuel","Wallace","Yeshua","Kannon","Kingsley","Noa","TRUE","Ermias","Harold","Joziah","Rene","Truce","Aldo","Dimitri","Halo","Ronnie","Vance","Aden","Ishaan","Kace","Stefan"],
+        // 1000 Last Names
+        surnames: ["Smith","Johnson","Williams","Brown","Jones","Garcia","Miller","Davis","Rodriguez","Martinez","Hernandez","Lopez","Gonzalez","Wilson","Anderson","Thomas","Taylor","Moore","Jackson","Martin","Lee","Perez","Thompson","White","Harris","Sanchez","Clark","Ramirez","Lewis","Robinson","Walker","Young","Allen","King","Wright","Scott","Torres","Nguyen","Hill","Flores","Green","Adams","Nelson","Baker","Hall","Rivera","Campbell","Mitchell","Carter","Roberts","Gomez","Phillips","Evans","Turner","Diaz","Parker","Cruz","Edwards","Collins","Reyes","Stewart","Morris","Morales","Murphy","Cook","Rogers","Gutierrez","Ortiz","Morgan","Cooper","Peterson","Bailey","Reed","Kelly","Howard","Ramos","Kim","Cox","Ward","Richardson","Watson","Brooks","Chavez","Wood","James","Bennett","Gray","Mendoza","Ruiz","Hughes","Price","Alvarez","Castillo","Sanders","Patel","Myers","Long","Ross","Foster","Jimenez","Powell","Jenkins","Perry","Russell","Sullivan","Bell","Coleman","Butler","Henderson","Barnes","Gonzales","Fisher","Vasquez","Simmons","Romero","Jordan","Patterson","Alexander","Hamilton","Graham","Reynolds","Griffin","Wallace","Moreno","West","Cole","Hayes","Bryant","Herrera","Gibson","Ellis","Tran","Medina","Aguilar","Stevens","Murray","Ford","Castro","Marshall","Owens","Harrison","Fernandez","Mcdonald","Woods","Washington","Kennedy","Wells","Vargas","Henry","Chen","Freeman","Webb","Tucker","Guzman","Burns","Crawford","Olson","Simpson","Porter","Hunter","Gordon","Mendez","Silva","Shaw","Snyder","Mason","Dixon","Munoz","Hunt","Hicks","Holmes","Palmer","Wagner","Black","Robertson","Boyd","Rose","Stone","Salazar","Fox","Warren","Mills","Meyer","Rice","Schmidt","Garza","Daniels","Ferguson","Nichols","Stephens","Soto","Weaver","Ryan","Gardner","Payne","Grant","Dunn","Kelley","Spencer","Hawkins","Arnold","Pierce","Vazquez","Hansen","Peters","Santos","Hart","Bradley","Knight","Elliott","Cunningham","Duncan","Armstrong","Hudson","Carroll","Lane","Riley","Andrews","Alvarado","Ray","Delgado","Berry","Perkins","Hoffman","Johnston","Matthews","Pena","Richards","Contreras","Willis","Carpenter","Lawrence","Sandoval","Guerrero","George","Chapman","Rios","Estrada","Ortega","Watkins","Greene","Nunez","Wheeler","Valdez","Harper","Burke","Larson","Santiago","Maldonado","Morrison","Franklin","Carlson","Austin","Dominguez","Carr","Lawson","Jacobs","Obrien","Lynch","Singh","Vega","Bishop","Montgomery","Oliver","Jensen","Harvey","Williamson","Gilbert","Dean","Sims","Espinoza","Howell","Li","Wong","Reid","Hanson","Le","Mccoy","Garrett","Burton","Fuller","Wang","Weber","Welch","Rojas","Lucas","Marquez","Fields","Park","Yang","Little","Banks","Padilla","Day","Walsh","Bowman","Schultz","Luna","Fowler","Mejia","Davidson","Acosta","Brewer","May","Holland","Juarez","Newman","Pearson","Curtis","Cortez","Douglas","Schneider","Joseph","Barrett","Navarro","Figueroa","Keller","Avila","Wade","Molina","Stanley","Hopkins","Campos","Barnett","Bates","Chambers","Caldwell","Beck","Lambert","Miranda","Byrd","Craig","Ayala","Lowe","Frazier","Powers","Neal","Leonard","Gregory","Carrillo","Sutton","Fleming","Rhodes","Shelton","Schwartz","Norris","Jennings","Watts","Duran","Walters","Cohen","Mcdaniel","Moran","Parks","Steele","Vaughn","Becker","Holt","Deleon","Barker","Terry","Hale","Leon","Hail","Benson","Haynes","Horton","Miles","Lyons","Pham","Graves","Bush","Thornton","Wolfe","Warner","Cabrera","Mckinney","Mann","Zimmerman","Dawson","Lara","Fletcher","Page","Mccarthy","Love","Robles","Cervantes","Solis","Erickson","Reeves","Chang","Klein","Salinas","Fuentes","Baldwin","Daniel","Simon","Velasquez","Hardy","Higgins","Aguirre","Lin","Cummings","Chandler","Sharp","Barber","Bowen","Ochoa","Dennis","Robbins","Liu","Ramsey","Francis","Griffith","Paul","Blair","Oconnor","Cardenas","Pacheco","Cross","Calderon","Quinn","Moss","Swanson","Chan","Rivas","Khan","Rodgers","Serrano","Fitzgerald","Rosales","Stevenson","Christensen","Manning","Gill","Curry","Mclaughlin","Harmon","Mcgee","Gross","Doyle","Garner","Newton","Burgess","Reese","Walton","Blake","Trujillo","Adkins","Brady","Goodman","Roman","Webster","Goodwin","Fischer","Huang","Potter","Delacruz","Montoya","Todd","Wu","Hines","Mullins","Castaneda","Malone","Cannon","Tate","Mack","Sherman","Hubbard","Hodges","Zhang","Guerra","Wolf","Valencia","Franco","Saunders","Rowe","Gallagher","Farmer","Hammond","Hampton","Townsend","Ingram","Wise","Gallegos","Clarke","Barton","Schroeder","Maxwell","Waters","Logan","Camacho","Strickland","Norman","Person","Colon","Parsons","Frank","Harrington","Glover","Osborne","Buchanan","Casey","Floyd","Patton","Ibarra","Ball","Tyler","Suarez","Bowers","Orozco","Salas","Cobb","Gibbs","Andrade","Bauer","Conner","Moody","Escobar","Mcguire","Lloyd","Mueller","Hartman","French","Kramer","Mcbride","Pope","Lindsey","Velazquez","Norton","Mccormick","Sparks","Flynn","Yates","Hogan","Marsh","Macias","Villanueva","Zamora","Pratt","Stokes","Owen","Ballard","Lang","Brock","Villarreal","Charles","Drake","Barrera","Cain","Patrick","Pineda","Burnett","Mercado","Santana","Shepherd","Bautista","Ali","Shaffer","Lamb","Trevino","Mckenzie","Hess","Beil","Olsen","Cochran","Morton","Nash","Wilkins","Petersen","Briggs","Shah","Roth","Nicholson","Holloway","Lozano","Flowers","Rangel","Hoover","Arias","Short","Mora","Valenzuela","Bryan","Meyers","Weiss","Underwood","Bass","Greer","Summers","Houston","Carson","Morrow","Clayton","Whitaker","Decker","Yoder","Collier","Zuniga","Carey","Wilcox","Melendez","Poole","Roberson","Larsen","Conley","Davenport","Copeland","Massey","Lam","Huff","Rocha","Cameron","Jefferson","Hood","Monroe","Anthony","Pittman","Huynh","Randall","Singleton","Kirk","Combs","Mathis","Christian","Skinner","Bradford","Richard","Galvan","Wall","Boone","Kirby","Wilkinson","Bridges","Bruce","Atkinson","Velez","Meza","Roy","Vincent","York","Hodge","Villa","Abbott","Allison","Tapia","Gates","Chase","Sosa","Sweeney","Farrell","Wyatt","Dalton","Horn","Barron","Phelps","Yu","Dickerson","Heath","Foley","Atkins","Mathews","Bonilla","Acevedo","Benitez","Zavala","Hensley","Glenn","Cisneros","Harrell","Shields","Rubio","Choi","Huffman","Boyer","Garrison","Arroyo","Bond","Kane","Hancock","Callahan","Dillon","Cline","Wiggins","Grimes","Arellano","Melton","Oneill","Savage","Ho","Beltran","Pitts","Parrish","Ponce","Rich","Booth","Koch","Golden","Ware","Brennan","Mcdowell","Marks","Cantu","Humphrey","Baxter","Sawyer","Clay","Tanner","Hutchinson","Kaur","Berg","Wiley","Gilmore","Russo","Villegas","Hobbs","Keith","Wilkerson","Ahmed","Beard","Mcclain","Montes","Mata","Rosario","Vang","Walter","Henson","Oneal","Mosley","Mcclure","Beasley","Stephenson","Snow","Huerta","Preston","Vance","Barry","Johns","Eaton","Blackwell","Dyer","Prince","Macdonald","Solomon","Guevara","Stafford","English","Hurst","Woodard","Cortes","Shannon","Kemp","Nolan","Mccullough","Merritt","Murillo","Moon","Salgado","Strong","Kline","Cordova","Barajas","Roach","Rosas","Winters","Jacobson","Lester","Knox","Bullock","Kerr","Leach","Meadows","Davila","Orr","Whitehead","Pruitt","Kent","Conway","Mckee","Barr","David","Dejesus","Marin","Berger","Mcintyre","Blankenship","Gaines","Palacios","Cuevas","Bartlett","Durham","Dorsey","Mccall","Odonnell","Stein","Browning","Stout","Lowery","Sloan","Mclean","Hendricks","Calhoun","Sexton","Chung","Gentry","Hull","Duarte","Ellison","Nielsen","Gillespie","Buck","Middleton","Sellers","Leblanc","Esparza","Hardin","Bradshaw","Mcintosh","Howe","Livingston","Frost","Glass","Morse","Knapp","Herman","Stark","Bravo","Noble","Spears","Weeks","Corona","Frederick","Buckley","Mcfarland","Hebert","Enriquez","Hickman","Quintero","Randolph","Schaefer","Walls","Trejo","House","Reilly","Pennington","Michael","Conrad","Giles","Benjamin","Crosby","Fitzpatrick","Donovan","Mays","Mahoney","Valentine","Raymond","Medrano","Hahn","Mcmillan","Small","Bentley","Felix","Peck","Lucero","Boyle","Hanna","Pace","Rush","Hurley","Harding","Mcconnell","Bernal","Nava","Ayers","Everett","Ventura","Avery","Pugh","Mayer","Bender","Shepard","Mcmahon","Landry","Case","Sampson","Moses","Magana","Blackburn","Dunlap","Gould","Duffy","Vaughan","Herring","Mckay","Espinosa","Rivers","Farley","Bernard","Ashley","Friedman","Potts","Truong","Costa","Correa","Blevins","Nixon","Clements","Fry","Delarosa","Best","Benton","Lugo","Portillo","Dougherty","Crane","Haley","Phan","Villalobos","Blanchard","Horne","Finley","Quintana","Lynn","Esquivel","Bean","Dodson","Mullen","Xiong","Hayden","Cano","Levy","Huber","Richmond","Moyer","Lim","Frye","Sheppard","Mccarty","Avalos","Booker","Waller","Parra","Woodward","Jaramillo","Krueger","Rasmussen","Brandt","Peralta","Donaldson","Stuart","Faulkner","Maynard","Galindo","Coffey","Estes","Sanford","Burch","Maddox","Vo","Oconnell","Vu","Andersen","Spence","Mcpherson","Church","Schmitt","Stanton","Leal","Cherry","Compton","Dudley","Sierra","Pollard","Alfaro","Hester","Proctor","Lu","Hinton","Novak","Good","Madden","Mccann","Terrell","Jarvis","Dickson","Reyna","Cantrell","Mayo","Branch","Hendrix","Rollins","Rowland","Whitney","Duke","Odom","Daugherty","Travis","Tang"]
+    };
+    
+    // --- DOM Elements ---
+    const dom = {
+        gmailInput: document.getElementById('gmail-input-textarea'),
+        maleNamesInput: document.getElementById('male-names-textarea'),
+        femaleNamesInput: document.getElementById('female-names-textarea'),
+        surnamesInput: document.getElementById('surnames-textarea'),
+        generateBtn: document.getElementById('generate-btn'),
+        loadExamplesBtn: document.getElementById('load-examples-btn'),
+        clearListsBtn: document.getElementById('clear-lists-btn'),
+        saveStorageBtn: document.getElementById('save-storage-btn'),
+        loadStorageBtn: document.getElementById('load-storage-btn'),
+        randomizeCheckbox: document.getElementById('randomize-checkbox'),
+        ignoreDuplicatesCheckbox: document.getElementById('ignore-duplicates-checkbox'),
+        randomSeedInput: document.getElementById('random-seed-input'),
+        genderForceSelect: document.getElementById('gender-force-select'),
+        resultsTbody: document.getElementById('results-tbody'),
+        resultsTable: document.getElementById('results-table'),
+        filterInput: document.getElementById('filter-input'),
+        copyBtn: document.getElementById('copy-btn'),
+        downloadTxtBtn: document.getElementById('download-txt-btn'),
+        downloadCsvBtn: document.getElementById('download-csv-btn'),
+        progressContainer: document.getElementById('progress-container'),
+        progressBar: document.getElementById('progress-bar'),
+        statsContainer: document.getElementById('stats-container')
+    };
+    
+    let generatedData = [];
+    let sortState = { column: 'index', direction: 'asc' };
+
+    // --- Core Logic ---
+
+    // Simple, fast string hashing function (non-cryptographic)
+    const simpleHash = str => {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = (hash << 5) - hash + char;
+            hash &= hash; // Convert to 32bit integer
+        }
+        return Math.abs(hash);
+    };
+
+    // Pseudo-Random Number Generator for seeded randomness
+    const createPRNG = (seedStr) => {
+        let seed = simpleHash(seedStr);
+        return function() {
+            seed = (seed * 9301 + 49297) % 233280;
+            return seed / 233280;
+        };
+    };
+
+    const getNamesFromTextarea = (textarea) => {
+        return textarea.value.split('\n').map(name => name.trim()).filter(Boolean);
+    };
+
+    const generateAllNames = async () => {
+        dom.generateBtn.disabled = true;
+        dom.generateBtn.textContent = 'GENERATING...';
+        dom.progressContainer.style.display = 'block';
+        dom.progressBar.style.width = '0%';
+        dom.statsContainer.innerHTML = '';
+        dom.resultsTbody.innerHTML = '';
+        generatedData = [];
+        
+        const maleNames = getNamesFromTextarea(dom.maleNamesInput);
+        const femaleNames = getNamesFromTextarea(dom.femaleNamesInput);
+        const surnames = getNamesFromTextarea(dom.surnamesInput);
+        
+        if (!maleNames.length && !femaleNames.length) {
+            alert('Please provide at least one male or female first name list.');
+            resetGenerateButton();
+            return;
+        }
+        if (!surnames.length) {
+            alert('Please provide a surname list.');
+            resetGenerateButton();
+            return;
+        }
+
+        let emails = dom.gmailInput.value
+            .split(/[\n,]/)
+            .map(e => e.trim().toLowerCase())
+            .filter(Boolean);
+        
+        const totalInputs = emails.length;
+        if (dom.ignoreDuplicatesCheckbox.checked) {
+            emails = [...new Set(emails)];
+        }
+        
+        const totalToProcess = emails.length;
+        const usedFullNames = new Set();
+        let collisions = 0;
+        
+        const isRandom = dom.randomizeCheckbox.checked;
+        const seed = dom.randomSeedInput.value;
+        const prng = isRandom && seed ? createPRNG(seed) : Math.random;
+        const genderForce = dom.genderForceSelect.value;
+        
+        const CHUNK_SIZE = 200;
+        for (let i = 0; i < totalToProcess; i += CHUNK_SIZE) {
+            const chunk = emails.slice(i, i + CHUNK_SIZE);
+            
+            for (const email of chunk) {
+                let gender, firstName, lastName, fullName;
+                let attempts = 0;
+                
+                do {
+                    let hashInput = `${email}_${attempts}`;
+                    let hash = simpleHash(hashInput);
+                    let rand = isRandom ? prng() : -1;
+
+                    // 1. Determine Gender
+                    if (genderForce !== 'hash') {
+                        gender = genderForce;
+                    } else {
+                        const hasMale = maleNames.length > 0;
+                        const hasFemale = femaleNames.length > 0;
+                        if (hasMale && !hasFemale) {
+                            gender = 'male';
+                        } else if (!hasMale && hasFemale) {
+                            gender = 'female';
+                        } else {
+                            const genderBit = isRandom ? Math.floor(rand * 2) : hash % 2;
+                            gender = genderBit === 0 ? 'male' : 'female';
+                        }
+                    }
+
+                    // 2. Select First Name
+                    const firstNameList = gender === 'male' ? maleNames : femaleNames;
+                    const firstNameIndex = isRandom ? Math.floor(prng() * firstNameList.length) : hash % firstNameList.length;
+                    firstName = firstNameList[firstNameIndex];
+
+                    // 3. Select Last Name
+                    // Use a different hash for surname to avoid locking first/last name pairs
+                    const surnameHash = simpleHash(hashInput + '_surname');
+                    const surnameIndex = isRandom ? Math.floor(prng() * surnames.length) : surnameHash % surnames.length;
+                    lastName = surnames[surnameIndex];
+
+                    fullName = `${firstName} ${lastName}`.toLowerCase();
+                    attempts++;
+                    
+                    if (attempts > 1 && attempts > (firstNameList.length + surnames.length)/2) {
+                        // If we are still colliding after many tries, append a number
+                        lastName = `${lastName}_${attempts-1}`;
+                        fullName = `${firstName} ${lastName}`.toLowerCase();
+                        break;
+                    }
+                } while (usedFullNames.has(fullName));
+                
+                if(attempts > 1) collisions++;
+
+                usedFullNames.add(fullName);
+                generatedData.push({ email, firstName, lastName, gender });
+            }
+            
+            dom.progressBar.style.width = `${((i + chunk.length) / totalToProcess) * 100}%`;
+            // Yield to the main thread to update UI
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+        
+        renderTable();
+        updateStats(totalInputs, emails.length, collisions);
+        resetGenerateButton();
+    };
+    
+    const resetGenerateButton = () => {
+        dom.generateBtn.disabled = false;
+        dom.generateBtn.textContent = 'GENERATE NAMES';
+        dom.progressContainer.style.display = 'none';
+    };
+
+    const updateStats = (total, unique, collisions) => {
+        dom.statsContainer.innerHTML = `
+            <span>Inputs: ${total}</span>
+            <span>Unique Emails: ${unique}</span>
+            <span>Collisions Resolved: ${collisions}</span>
+        `;
+    };
+
+    // --- UI & Rendering ---
+
+    const renderTable = () => {
+        const fragment = document.createDocumentFragment();
+        generatedData.forEach((row, index) => {
+            const tr = document.createElement('tr');
+            tr.dataset.email = row.email;
+            tr.innerHTML = `
+                <td>${index + 1}</td>
+                <td>${row.email}</td>
+                <td>${row.firstName}</td>
+                <td>${row.lastName}</td>
+                <td>${row.gender}</td>
+            `;
+            fragment.appendChild(tr);
+        });
+        dom.resultsTbody.innerHTML = ''; // Clear existing
+        dom.resultsTbody.appendChild(fragment); // Append all at once
+    };
+    
+    const sortTable = (column) => {
+        const direction = (sortState.column === column && sortState.direction === 'asc') ? 'desc' : 'asc';
+        const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+        
+        generatedData.sort((a, b) => {
+            let valA, valB;
+            if (column === 'index') {
+                // Since index isn't on the data object, we get it from the original unsorted order
+                // A simpler way is to just add it to the data during generation, but for now we'll fake it.
+                // A better implementation would add an `id` or `originalIndex` to each generatedData object.
+                // For simplicity here, we'll just sort by email as a proxy for original order.
+                valA = a.email;
+                valB = b.email;
+            } else {
+                 valA = a[column] || '';
+                 valB = b[column] || '';
+            }
+           
+            const comparison = collator.compare(valA, valB);
+            return direction === 'asc' ? comparison : -comparison;
+        });
+
+        sortState = { column, direction };
+
+        // Update sort indicators
+        document.querySelectorAll('#results-table th').forEach(th => {
+            th.querySelector('.sort-indicator').textContent = '';
+        });
+        const currentTh = document.querySelector(`#results-table th[data-column="${column}"]`);
+        if (currentTh) {
+            currentTh.querySelector('.sort-indicator').textContent = direction === 'asc' ? '▲' : '▼';
+        }
+        
+        renderTable();
+    };
+
+    const filterTable = () => {
+        const query = dom.filterInput.value.toLowerCase();
+        const rows = dom.resultsTbody.getElementsByTagName('tr');
+        for (let row of rows) {
+            const textContent = row.textContent.toLowerCase();
+            row.style.display = textContent.includes(query) ? '' : 'none';
+        }
+    };
+
+    const formatOutput = (format) => {
+        if (format === 'csv') {
+             const header = "email,first_name,last_name,gender\n";
+             return header + generatedData.map(d => `${d.email},${d.firstName},${d.lastName},${d.gender}`).join('\n');
+        }
+        if (format === 'txt') {
+             return generatedData.map(d => `${d.email},${d.firstName},${d.lastName},${d.gender}`).join('\n');
+        }
+    };
+    
+    // --- Event Handlers ---
+
+    const setupEventListeners = () => {
+        dom.generateBtn.addEventListener('click', generateAllNames);
+        
+        dom.loadExamplesBtn.addEventListener('click', () => {
+            dom.maleNamesInput.value = DB.maleFirstNames.join('\n');
+            dom.femaleNamesInput.value = DB.femaleFirstNames.join('\n');
+            dom.surnamesInput.value = DB.surnames.join('\n');
+        });
+
+        dom.clearListsBtn.addEventListener('click', () => {
+            dom.maleNamesInput.value = '';
+            dom.femaleNamesInput.value = '';
+            dom.surnamesInput.value = '';
+        });
+        
+        dom.saveStorageBtn.addEventListener('click', () => {
+            localStorage.setItem('namegen_male', dom.maleNamesInput.value);
+            localStorage.setItem('namegen_female', dom.femaleNamesInput.value);
+            localStorage.setItem('namegen_surnames', dom.surnamesInput.value);
+            alert('Lists saved to your browser\'s local storage.');
+        });
+        
+        dom.loadStorageBtn.addEventListener('click', () => {
+            dom.maleNamesInput.value = localStorage.getItem('namegen_male') || '';
+            dom.femaleNamesInput.value = localStorage.getItem('namegen_female') || '';
+            dom.surnamesInput.value = localStorage.getItem('namegen_surnames') || '';
+             alert('Lists loaded from your browser\'s local storage.');
+        });
+        
+        dom.filterInput.addEventListener('input', filterTable);
+        
+        dom.resultsTable.querySelector('thead').addEventListener('click', (e) => {
+            const header = e.target.closest('th');
+            if (header && header.dataset.column) {
+                sortTable(header.dataset.column);
+            }
+        });
+
+        dom.copyBtn.addEventListener('click', () => {
+            if (generatedData.length === 0) return alert('No data to copy.');
+            navigator.clipboard.writeText(formatOutput('csv')).then(() => {
+                alert('Results copied to clipboard as CSV.');
+            }, () => {
+                alert('Failed to copy to clipboard.');
+            });
+        });
+        
+        const setupDownloadButton = (button, format, mimeType) => {
+            button.addEventListener('click', (e) => {
+                if (generatedData.length === 0) {
+                     e.preventDefault();
+                     return alert('No data to download.');
+                }
+                const content = formatOutput(format);
+                const blob = new Blob([content], { type: mimeType });
+                button.href = URL.createObjectURL(blob);
+            });
+        };
+        
+        setupDownloadButton(dom.downloadTxtBtn, 'txt', 'text/plain');
+        setupDownloadButton(dom.downloadCsvBtn, 'csv', 'text/csv');
+    };
+    
+    // --- Public methods ---
+    return {
+        init: () => {
+            setupEventListeners();
+            dom.loadExamplesBtn.click(); // Load examples on start
+        },
+        loadSampleEmails: () => {
+            const sampleEmails = [
+                'john.doe@gmail.com', 'shahinur', 'user123@gmail.com', 'creative.mind@yahoo.com', 'another.user',
+                'test.email.55', 'sample_person@outlook.com', 'developer.jane', 'project.manager.bob', 'some.random.guy'
+            ];
+            dom.gmailInput.value = sampleEmails.join('\n');
+        }
+    };
+
+})();
+
+document.addEventListener('DOMContentLoaded', app.init);
+
+</script>
+</body>
+</html>
